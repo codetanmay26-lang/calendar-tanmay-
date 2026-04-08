@@ -49,6 +49,12 @@ npm run build
 npm run preview
 ```
 
+## Vercel Deploy
+
+- Build command: `npm run build`
+- Start command: `npm run start`
+- Output directory: `dist`
+
 ## Usage
 
 1. Open the app in the browser.
