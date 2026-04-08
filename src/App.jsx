@@ -1151,8 +1151,34 @@ function App() {
         />
       </AnimatePresence>
 
-      <div className="mb-4 flex w-full justify-end px-2 sm:px-4">
-        <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="mb-4 flex w-full flex-col gap-3 px-2 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
+        <div
+          className="inline-flex items-center gap-3 self-start rounded-2xl border px-4 py-3 shadow-sm backdrop-blur"
+          style={{ borderColor: themeTokens.border, background: themeTokens.surface }}
+        >
+          <div
+            className="flex h-11 w-11 items-center justify-center rounded-xl"
+            style={{ background: themeTokens.accentSoft, color: themeTokens.accentHex }}
+            aria-hidden="true"
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6">
+              <path
+                fill="currentColor"
+                d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1.5A2.5 2.5 0 0 1 22 6.5v12A2.5 2.5 0 0 1 19.5 21h-15A2.5 2.5 0 0 1 2 18.5v-12A2.5 2.5 0 0 1 4.5 4H6V3a1 1 0 0 1 1-1Zm12 8H5v8.5a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V10Z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-lg font-extrabold leading-tight sm:text-xl lg:text-2xl" style={{ color: themeTokens.text }}>
+              Wall Calendar UI
+            </h1>
+            <p className="text-xs font-medium uppercase tracking-[0.28em] sm:text-sm" style={{ color: themeTokens.muted }}>
+              Plan days, ranges, and notes
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 lg:self-start">
           <button
             onClick={loadDemoData}
             className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
