@@ -52,36 +52,6 @@ const scenePalettes = {
   },
 }
 
-const holidayRegions = [
-  { code: 'IN', label: 'India' },
-  { code: 'US', label: 'United States' },
-  { code: 'GB', label: 'United Kingdom' },
-  { code: 'AE', label: 'UAE' },
-]
-
-const multiFaithFestivalMap = {
-  IN: {
-    2026: {
-      '2026-01-13': 'Lohri',
-      '2026-01-14': 'Makar Sankranti / Pongal',
-      '2026-02-15': 'Maha Shivratri',
-      '2026-03-04': 'Holi',
-      '2026-03-20': 'Eid al-Fitr (Tentative)',
-      '2026-03-26': 'Ram Navami',
-      '2026-04-03': 'Good Friday',
-      '2026-04-05': 'Easter Sunday',
-      '2026-04-14': 'Baisakhi / Ambedkar Jayanti',
-      '2026-05-27': 'Eid al-Adha (Tentative)',
-      '2026-07-17': 'Muharram (Tentative)',
-      '2026-08-27': 'Janmashtami',
-      '2026-09-05': 'Milad-un-Nabi (Tentative)',
-      '2026-10-20': 'Dussehra',
-      '2026-11-24': 'Guru Nanak Jayanti',
-      '2026-12-25': 'Christmas',
-    },
-  },
-}
-
 const mergeFestivalLabel = (existing, incoming) => {
   if (!existing) return incoming
   if (!incoming) return existing
@@ -313,9 +283,6 @@ function App() {
   const [theme, setTheme] = useState('light')
   const [themePalette, setThemePalette] = useState(defaultThemePalette)
   const [navDirection, setNavDirection] = useState(1)
-  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 })
-  const [cursorVisible, setCursorVisible] = useState(false)
-  const [cursorActive, setCursorActive] = useState(false)
   const [dragState, setDragState] = useState({ active: false, anchor: null })
   const [dragPreview, setDragPreview] = useState(null)
   const [focusedDate, setFocusedDate] = useState(new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1))
@@ -329,11 +296,10 @@ function App() {
   const [modularDraft, setModularDraft] = useState({ title: '', body: '', tags: '', priority: 'medium', checklist: [] })
   const [checkItemInput, setCheckItemInput] = useState('')
   const [editorExpanded, setEditorExpanded] = useState(false)
-  const [liveHolidayMap, setLiveHolidayMap] = useState({})
-  const [holidaySyncStatus, setHolidaySyncStatus] = useState('idle')
-  const [holidayRegion, setHolidayRegion] = useState('IN')
-  const [holidayUpdatedAt, setHolidayUpdatedAt] = useState(null)
-  const [holidayRefreshTick, setHolidayRefreshTick] = useState(0)
+  const cursorRingRef = useRef(null)
+  const cursorDotRef = useRef(null)
+  const cursorFrameRef = useRef(0)
+  const cursorStateRef = useRef({ visible: false, active: false, x: 0, y: 0 })
   const lastSavedRangeRef = useRef('')
   const suppressClickRef = useRef(false)
   const flipPointerStartRef = useRef(null)
@@ -432,50 +398,66 @@ function App() {
   }, [timelineOffset, anchorDate])
 
   useEffect(() => {
-    let active = true
-    const year = viewDate.getFullYear()
-
-    const syncHolidays = async () => {
-      setHolidaySyncStatus('loading')
-      try {
-        const response = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${holidayRegion}`)
-        if (!response.ok) throw new Error('holiday-fetch-failed')
-        const data = await response.json()
-        const dynamicMap = {}
-        data.forEach((item) => {
-          if (!item?.date) return
-          dynamicMap[item.date] = mergeFestivalLabel(dynamicMap[item.date], item.localName || item.name || 'Holiday')
-        })
-
-        const curatedMap = multiFaithFestivalMap[holidayRegion]?.[year] || {}
-        Object.entries(curatedMap).forEach(([dateKey, label]) => {
-          dynamicMap[dateKey] = mergeFestivalLabel(dynamicMap[dateKey], label)
-        })
-        if (active) {
-          setLiveHolidayMap(dynamicMap)
-          setHolidaySyncStatus('ready')
-          setHolidayUpdatedAt(new Date())
-        }
-      } catch {
-        if (active) {
-          setHolidaySyncStatus('offline')
-        }
-      }
-    }
-
-    syncHolidays()
-    return () => {
-      active = false
-    }
-  }, [viewDate, holidayRegion, holidayRefreshTick])
-
-  useEffect(() => {
     if (!focusedDate) return
     if (focusedDate.getFullYear() !== viewDate.getFullYear() || focusedDate.getMonth() !== viewDate.getMonth()) {
       const nextFocused = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1)
       setFocusedDate(nextFocused)
     }
   }, [viewDate, focusedDate])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia('(pointer: fine)').matches) return
+
+    const ring = cursorRingRef.current
+    const dot = cursorDotRef.current
+    if (!ring || !dot) return
+
+    const renderCursor = () => {
+      cursorFrameRef.current = 0
+      const { visible, active, x, y } = cursorStateRef.current
+      const ringOffset = active ? 22 : 16
+      const dotOffset = active ? 4 : 3
+
+      ring.style.transform = `translate3d(${x - ringOffset}px, ${y - ringOffset}px, 0) scale(${visible ? 1 : 0.6})`
+      ring.style.opacity = visible ? '1' : '0'
+      dot.style.transform = `translate3d(${x - dotOffset}px, ${y - dotOffset}px, 0) scale(${visible ? (active ? 1.35 : 1) : 0.4})`
+      dot.style.opacity = visible ? '1' : '0'
+    }
+
+    const scheduleRender = () => {
+      if (cursorFrameRef.current) return
+      cursorFrameRef.current = window.requestAnimationFrame(renderCursor)
+    }
+
+    const onMove = (event) => {
+      const target = event.target
+      const isInteractive = target instanceof HTMLElement && Boolean(target.closest('button, a, input, textarea, select, [role="button"]'))
+
+      cursorStateRef.current.visible = true
+      cursorStateRef.current.active = isInteractive
+      cursorStateRef.current.x = event.clientX
+      cursorStateRef.current.y = event.clientY
+      scheduleRender()
+    }
+
+    const onLeave = () => {
+      cursorStateRef.current.visible = false
+      cursorStateRef.current.active = false
+      scheduleRender()
+    }
+
+    window.addEventListener('pointermove', onMove, { passive: true })
+    window.addEventListener('pointerleave', onLeave)
+
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerleave', onLeave)
+      if (cursorFrameRef.current) {
+        window.cancelAnimationFrame(cursorFrameRef.current)
+        cursorFrameRef.current = 0
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const onUp = () => {
@@ -519,38 +501,6 @@ function App() {
     ].slice(0, 120))
     lastSavedRangeRef.current = key
   }, [rangeStart, rangeEnd])
-
-  useEffect(() => {
-    const onMove = (event) => {
-      setCursorVisible(true)
-      setCursorPos({ x: event.clientX, y: event.clientY })
-    }
-
-    const onEnter = () => setCursorVisible(true)
-    const onLeave = () => {
-      setCursorVisible(false)
-      setCursorActive(false)
-    }
-
-    const onOver = (event) => {
-      const target = event.target
-      if (!(target instanceof HTMLElement)) return
-      const isInteractive = target.closest('button, a, input, textarea, select, [role="button"]')
-      setCursorActive(Boolean(isInteractive))
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseenter', onEnter)
-    window.addEventListener('mouseleave', onLeave)
-    window.addEventListener('mouseover', onOver)
-
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseenter', onEnter)
-      window.removeEventListener('mouseleave', onLeave)
-      window.removeEventListener('mouseover', onOver)
-    }
-  }, [])
 
   const onSelectDate = (date) => {
     if (suppressClickRef.current) {
@@ -678,18 +628,7 @@ function App() {
     return getIntentChips(selectionStart, activeSelectionEnd, keywordText)
   }, [selectionStart, activeSelectionEnd, monthNoteValue, rangeNoteValue, rangeNotes])
 
-  const holidayCount = Object.keys(liveHolidayMap).length
-  const holidayUpdatedLabel = holidayUpdatedAt
-    ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(holidayUpdatedAt)
-    : 'Not synced yet'
-  const todayHoliday = useMemo(() => resolveHoliday(new Date(), liveHolidayMap), [liveHolidayMap])
-  const currentMonthFestivals = useMemo(() => {
-    const monthPrefix = `${viewDate.getFullYear()}-${`${viewDate.getMonth() + 1}`.padStart(2, '0')}-`
-    return Object.entries(liveHolidayMap)
-      .filter(([dateKey]) => dateKey.startsWith(monthPrefix))
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .slice(0, 5)
-  }, [liveHolidayMap, viewDate])
+  const todayHoliday = useMemo(() => resolveHoliday(new Date(), {}), [])
 
   const sceneStyles = useMemo(() => {
     if (scenePreset === 'corporate') {
@@ -1132,7 +1071,7 @@ function App() {
         style={{ background: themeTokens.bg }}
       />
       <main
-        className="theme-cursor relative z-10 w-full min-h-dvh px-2 py-4 transition-all duration-300 sm:px-4 sm:py-8 lg:py-12"
+        className="relative z-10 w-full min-h-dvh px-2 py-4 transition-all duration-300 sm:px-4 sm:py-8 lg:py-12"
         style={{ color: themeTokens.text, fontFamily: scenePreset === 'corporate' ? 'Manrope, sans-serif' : 'Playfair Display, serif' }}
       >
       <AnimatePresence mode="wait">
@@ -1150,6 +1089,33 @@ function App() {
           }}
         />
       </AnimatePresence>
+
+      <div
+        ref={cursorRingRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed left-0 top-0 z-[70] hidden h-8 w-8 rounded-full border md:block"
+        style={{
+          borderColor: isDark ? 'rgba(125, 211, 252, 0.72)' : toRgba(themeTokens.accent, 0.76),
+          backgroundColor: isDark ? toRgba(themeTokens.accent2, 0.22) : toRgba(themeTokens.accent, 0.14),
+          boxShadow: `0 0 0 4px ${toRgba(themeTokens.accent, isDark ? 0.08 : 0.06)}, 0 0 14px ${themeTokens.glow}`,
+          backdropFilter: 'blur(2px)',
+          opacity: 0,
+          transform: 'translate3d(0, 0, 0) scale(0.6)',
+          willChange: 'transform, opacity',
+        }}
+      />
+      <div
+        ref={cursorDotRef}
+        aria-hidden="true"
+        className="pointer-events-none fixed left-0 top-0 z-[71] hidden h-2 w-2 rounded-full md:block"
+        style={{
+          backgroundColor: themeTokens.accentStrong,
+          boxShadow: `0 0 10px ${themeTokens.glow}`,
+          opacity: 0,
+          transform: 'translate3d(0, 0, 0) scale(0.4)',
+          willChange: 'transform, opacity',
+        }}
+      />
 
       <div className="mb-4 flex w-full flex-col gap-3 px-2 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
         <div
@@ -1540,44 +1506,6 @@ function App() {
                 </div>
               </div>
 
-              <div className={`rounded-2xl border p-4 ${isDark ? 'border-slate-700 bg-slate-900/50' : 'border-slate-200 bg-white'}`}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                    Festival Sync: {holidaySyncStatus === 'ready' ? `Live (${holidayCount})` : holidaySyncStatus === 'loading' ? 'Syncing' : 'Offline fallback'}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={holidayRegion}
-                      onChange={(e) => setHolidayRegion(e.target.value)}
-                      className={`rounded-lg border px-2 py-1 text-xs font-semibold outline-none ${isDark ? 'border-slate-600 bg-slate-900 text-slate-100' : 'border-slate-300 bg-white text-slate-700'}`}
-                    >
-                      {holidayRegions.map((region) => (
-                        <option key={region.code} value={region.code}>{region.label}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => setHolidayRefreshTick((prev) => prev + 1)}
-                      className={`rounded-lg border px-2 py-1 text-xs font-semibold ${isDark ? 'border-slate-600 text-slate-100 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-white'}`}
-                    >
-                      Refresh
-                    </button>
-                  </div>
-                </div>
-                <p className={`mt-2 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                  Updated: {holidayUpdatedLabel}
-                </p>
-                <div className="mt-2 space-y-1">
-                  {currentMonthFestivals.length ? currentMonthFestivals.map(([dateKey, label]) => (
-                    <div key={dateKey} className={`flex items-center justify-between rounded-lg px-2 py-1 text-xs ${isDark ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-700'}`}>
-                      <span>{label}</span>
-                      <span>{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${dateKey}T00:00:00`))}</span>
-                    </div>
-                  )) : (
-                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No synced festivals in this month.</p>
-                  )}
-                </div>
-              </div>
-
               <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
                 {weekdays.map((day) => (
                   <div key={day} className={`text-center text-[11px] font-semibold uppercase tracking-[0.11em] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -1876,38 +1804,6 @@ function App() {
         ) : null}
       </AnimatePresence>
 
-      <motion.div
-        animate={{
-          x: cursorPos.x - (cursorActive ? 22 : 16),
-          y: cursorPos.y - (cursorActive ? 22 : 16),
-          scale: cursorVisible ? 1 : 0.6,
-          opacity: cursorVisible ? 1 : 0,
-        }}
-        transition={{ type: 'spring', stiffness: 450, damping: 30, mass: 0.45 }}
-        className="pointer-events-none fixed left-0 top-0 z-[70] hidden h-8 w-8 rounded-full border md:block"
-        style={{
-          borderColor: isDark ? 'rgba(125, 211, 252, 0.72)' : toRgba(themeTokens.accent, 0.76),
-          backgroundColor: isDark ? toRgba(themeTokens.accent2, 0.22) : toRgba(themeTokens.accent, 0.14),
-          boxShadow: cursorActive
-            ? `0 0 0 8px ${toRgba(themeTokens.accent, isDark ? 0.14 : 0.1)}, 0 0 24px ${themeTokens.glow}`
-            : `0 0 0 4px ${toRgba(themeTokens.accent, isDark ? 0.08 : 0.06)}, 0 0 14px ${themeTokens.glow}`,
-          backdropFilter: 'blur(2px)',
-        }}
-      />
-      <motion.div
-        animate={{
-          x: cursorPos.x - (cursorActive ? 4 : 3),
-          y: cursorPos.y - (cursorActive ? 4 : 3),
-          scale: cursorVisible ? (cursorActive ? 1.35 : 1) : 0.4,
-          opacity: cursorVisible ? 1 : 0,
-        }}
-        transition={{ type: 'spring', stiffness: 700, damping: 35, mass: 0.35 }}
-        className="pointer-events-none fixed left-0 top-0 z-[71] hidden h-2 w-2 rounded-full md:block"
-        style={{
-          backgroundColor: themeTokens.accentStrong,
-          boxShadow: `0 0 10px ${themeTokens.glow}`,
-        }}
-      />
     </main>
     </>
   )
