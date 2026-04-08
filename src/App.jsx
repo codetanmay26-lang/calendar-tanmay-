@@ -1543,7 +1543,7 @@ function App() {
                         selectionStart && activeSelectionEnd
                           ? date >= selectionStart && date <= activeSelectionEnd
                           : false
-                      const holidayName = resolveHoliday(date, liveHolidayMap)
+                      const holidayName = resolveHoliday(date)
                       const isWeekend = [0, 6].includes(date.getDay())
 
                       const base = 'min-h-[3.2rem] rounded-lg border px-1 py-1 text-sm font-medium transition-all duration-200 sm:rounded-xl focus:outline-none'
